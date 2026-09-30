@@ -133,6 +133,7 @@ tap-mssql --about --format=markdown
 | sqlalchemy_eng_params| False    | None    | SQLAlchemy Engine Paramaters: fast_executemany, future |
 | sqlalchemy_url_query | False    | None    | SQLAlchemy URL Query options: driver, TrustServerCertificate |
 | batch_config         | False    | None    | Optional Batch Message configuration |
+| stream_filters       | False    | None    | Filters added to the WHERE clause of a stream's SQL query. See [Stream Filters](#stream-filters) |
 | start_date           | False    | None    | The earliest record date to sync |
 | hd_jsonschema_types  | False    | False   | Turn on Higher Defined(HD) JSON Schema types to assist Targets |
 | stream_maps          | False    | None    | Config object for stream maps capability. For more information check out [Stream Maps](https://sdk.meltano.com/en/latest/stream_maps.html). |
@@ -146,6 +147,32 @@ tap is available by running:
 ```bash
 tap-mssql --about
 ```
+
+### Stream Filters
+
+`stream_filters` adds conditions to the `WHERE` clause of a stream's SQL query, so filtered-out rows are never read from SQL Server. It works with or without `batch_config`. All filters of a stream are combined with `AND`, and values are sent as bound parameters.
+
+```yaml
+stream_filters:
+  - stream: dbo-orders          # stream name: <schema>-<table>
+    filters:
+      - column_label: country
+        operation: "=="         # ==, !=, <, <=, >, >=
+        value: LU
+        type: String            # String, Float, Integer, Date, DateTime, Boolean
+      - column_label: amount
+        operation: ">="
+        value: "100"
+        type: Float
+```
+
+The filter column does not need to be selected. `Date` and `DateTime` values use ISO 8601 format and `Boolean` values accept `true`/`false`/`1`/`0`.
+
+**Incremental replication caveats:**
+
+- The bookmark only advances over rows that match the filters. Only filter on columns whose changes also update the replication key (or that never change, like a country or a tenant), otherwise rows that start matching later are missed.
+- Changing a stream's filters does not reprocess rows before the current bookmark: clear the stream state (`meltano state clear`) or run a full refresh.
+- Rows that stop matching a filter are not deleted from the target.
 
 ### Configure using environment variables
 

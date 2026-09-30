@@ -140,52 +140,64 @@ class Tapmssql(SQLTap):
                             )
                         )
                     )
-                ),
-                th.Property(
-                    "pre-batch_filtering",
-                    th.ArrayType(
-                        th.ObjectType(
-                            th.Property(
-                                "stream",
-                                th.StringType,
-                                description=("Name of stream (table) to filter before batching.")
-                            ),
-                            th.Property(
-                                "filters",
-                                th.ArrayType(
-                                    th.ObjectType(
-                                        th.Property(
-                                            "column_label",
-                                            th.StringType,
-                                            description=("Label of the column to filter on.")
-                                        ),
-                                        th.Property(
-                                            "operation",
-                                            th.StringType,
-                                            description=("Type of filter operation: "
-                                                         "['==','<=','>=','<', '>', '!=']"),
-                                            allowed_values=["==","<=",">=", "<", ">", "!="]
-                                        ),
-                                        th.Property(
-                                            "value",
-                                            th.StringType,
-                                            description=("Filter value.")
-                                        ),
-                                        th.Property(
-                                            "type",
-                                            th.StringType,
-                                            description=("Type of the filter value."
-                                                         "Can be one of the following: "
-                                                         "['String','Float','Integer','Date','DateTime','Boolean']")
-                                        )
-                                    )
-                                )
-                            )
-                        )
-                    )
                 )
             ),
             description="Optional Batch Message configuration",
+        ),
+        th.Property(
+            "stream_filters",
+            th.ArrayType(
+                th.ObjectType(
+                    th.Property(
+                        "stream",
+                        th.StringType,
+                        required=True,
+                        description=("Name of the stream to filter, "
+                                     "example: dbo-my_table")
+                    ),
+                    th.Property(
+                        "filters",
+                        th.ArrayType(
+                            th.ObjectType(
+                                th.Property(
+                                    "column_label",
+                                    th.StringType,
+                                    required=True,
+                                    description=("Label of the column to filter on.")
+                                ),
+                                th.Property(
+                                    "operation",
+                                    th.StringType,
+                                    required=True,
+                                    description=("Type of filter operation: "
+                                                 "['==','<=','>=','<', '>', '!=']"),
+                                    allowed_values=["==", "<=", ">=", "<", ">", "!="]
+                                ),
+                                th.Property(
+                                    "value",
+                                    th.StringType,
+                                    required=True,
+                                    description=("Filter value.")
+                                ),
+                                th.Property(
+                                    "type",
+                                    th.StringType,
+                                    required=True,
+                                    description=("Type of the filter value. "
+                                                 "Can be one of the following: "
+                                                 "['String','Float','Integer','Date','DateTime','Boolean']"),
+                                    allowed_values=["String", "Float", "Integer",
+                                                    "Date", "DateTime", "Boolean"]
+                                )
+                            )
+                        ),
+                        required=True,
+                    )
+                ),
+            ),
+            description=("Filters added to the WHERE clause of a stream's SQL "
+                         "query, applied with or without batch_config. "
+                         "All filters of a stream are combined with AND."),
         ),
         th.Property(
             "start_date",

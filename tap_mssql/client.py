@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import gzip
+import operator
 import struct
 import typing as t
 from base64 import b64encode
@@ -27,6 +28,36 @@ if t.TYPE_CHECKING:
 SQL_COPT_SS_ACCESS_TOKEN = 1256
 TOKEN_ENCODE_CODEC = "UTF-16-LE"
 TOKEN_URL = "https://database.windows.net/"  # The token URL for any Azure SQL database
+
+# stream_filters config: operation -> SQLAlchemy comparison
+FILTER_OPERATIONS = {
+    "==": operator.eq,
+    "!=": operator.ne,
+    "<": operator.lt,
+    "<=": operator.le,
+    ">": operator.gt,
+    ">=": operator.ge,
+}
+
+
+def _parse_bool(value: str) -> bool:
+    if value.casefold() in ("true", "1"):
+        return True
+    if value.casefold() in ("false", "0"):
+        return False
+    msg = f"Invalid Boolean filter value: {value!r}"
+    raise ValueError(msg)
+
+
+# stream_filters config: type -> parser of the string value
+FILTER_TYPES: dict[str, t.Callable[[str], t.Any]] = {
+    "String": str,
+    "Float": float,
+    "Integer": int,
+    "Date": datetime.date.fromisoformat,
+    "DateTime": datetime.datetime.fromisoformat,
+    "Boolean": _parse_bool,
+}
 
 # from https://docs.sqlalchemy.org/en/20/core/engines.html#generating-dynamic-authentication-tokens
 def make_provide_token(
@@ -502,6 +533,44 @@ class MSSQLStream(SQLStream):
 
         return record
 
+    @property
+    def stream_filters(self) -> list[dict]:
+        """Return the stream_filters config entries that apply to this stream."""
+        filters: list[dict] = []
+        for entry in self.config.get("stream_filters") or []:
+            if entry["stream"] == self.name:
+                filters.extend(entry["filters"])
+        return filters
+
+    def apply_stream_filters(self, table: sa.Table, query: sa.Select) -> sa.Select:
+        """Add the stream_filters config to the query WHERE clause.
+
+        Values are sent as bound parameters, never inlined in the SQL.
+
+        Args:
+            table: The table being queried. Must contain the filter columns.
+            query: The select query to filter.
+
+        Returns:
+            The filtered query.
+
+        Raises:
+            ValueError: If a filter column does not exist in the table.
+        """
+        columns = {col.name.casefold(): col for col in table.columns}
+        for stream_filter in self.stream_filters:
+            column = columns.get(stream_filter["column_label"].casefold())
+            if column is None:
+                msg = (
+                    f"Filter column '{stream_filter['column_label']}' not found "
+                    f"in stream '{self.name}'."
+                )
+                raise ValueError(msg)
+            value = FILTER_TYPES[stream_filter["type"]](stream_filter["value"])
+            compare = FILTER_OPERATIONS[stream_filter["operation"]]
+            query = query.where(compare(column, value))
+        return query
+
     def get_records(self, context: Context  | None) -> t.Iterable[dict[str, t.Any]]:
         """Return a generator of record-type dictionary objects.
 
@@ -525,12 +594,19 @@ class MSSQLStream(SQLStream):
             msg = f"Stream '{self.name}' does not support partitioning."
             raise NotImplementedError(msg)
 
-        selected_column_names = self.get_selected_schema()["properties"].keys()
+        selected_column_names = list(self.get_selected_schema()["properties"].keys())
+        # Filter columns may not be selected: load them, but only select
+        # the selected ones.
+        filter_column_names = [f["column_label"] for f in self.stream_filters]
         table = self.connector.get_table(
             full_table_name=self.fully_qualified_name,
-            column_names=selected_column_names,
+            column_names=selected_column_names + filter_column_names,
         )
-        query = table.select()
+        selected = {name.casefold() for name in selected_column_names}
+        query = sa.select(
+            *(col for col in table.columns if col.name.casefold() in selected)
+        ).select_from(table)
+        query = self.apply_stream_filters(table, query)
 
         if self.replication_key:
             replication_key_col = table.columns[self.replication_key]
