@@ -140,6 +140,49 @@ class Tapmssql(SQLTap):
                             )
                         )
                     )
+                ),
+                th.Property(
+                    "pre-batch_filtering",
+                    th.ArrayType(
+                        th.ObjectType(
+                            th.Property(
+                                "stream",
+                                th.StringType,
+                                description=("Name of stream (table) to filter before batching.")
+                            ),
+                            th.Property(
+                                "filters",
+                                th.ArrayType(
+                                    th.ObjectType(
+                                        th.Property(
+                                            "column_label",
+                                            th.StringType,
+                                            description=("Label of the column to filter on.")
+                                        ),
+                                        th.Property(
+                                            "operation",
+                                            th.StringType,
+                                            description=("Type of filter operation: "
+                                                         "['==','<=','>=','<', '>', '!=']"),
+                                            allowed_values=["==","<=",">=", "<", ">", "!="]
+                                        ),
+                                        th.Property(
+                                            "value",
+                                            th.StringType,
+                                            description=("Filter value.")
+                                        ),
+                                        th.Property(
+                                            "type",
+                                            th.StringType,
+                                            description=("Type of the filter value."
+                                                         "Can be one of the following: "
+                                                         "['String','Float','Integer','Date','DateTime','Boolean']")
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
                 )
             ),
             description="Optional Batch Message configuration",
